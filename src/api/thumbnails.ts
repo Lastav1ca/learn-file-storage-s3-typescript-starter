@@ -2,8 +2,10 @@ import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
 import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
-import type { BunRequest } from "bun";
+import { type BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
+import path from "node:path";
+import { randomBytes } from "node:crypto";
 
 const MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
@@ -31,11 +33,11 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
 
   const mediaType = img.type;
 
+  if (mediaType !== 'image/jpeg' && mediaType !== 'image/png'){
+    throw new BadRequestError("Invalid file type")
+  }
+
   const arrBuffer = await img.arrayBuffer()
-
-  const buffer = Buffer.from(arrBuffer).toString("base64")
-
-  const dataUrl = `data:${mediaType};base64,${buffer}`
 
   const video = getVideo(cfg.db, videoId)
 
@@ -46,7 +48,15 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new UserForbiddenError("You are not this videos owner")
   }
 
-  video.thumbnailURL = dataUrl
+  const extension = mediaType.split('/')[1]
+
+  const fileName = randomBytes(32).toString("base64url")
+
+  const thumbnailPath = path.join(cfg.assetsRoot, fileName + "." + extension)
+  
+  await Bun.write(thumbnailPath, arrBuffer)
+
+  video.thumbnailURL = `http://localhost:${cfg.port}/assets/${fileName}.${extension}`
 
   updateVideo(cfg.db, video)
 
